@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YÖKAtlas But Better</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js">
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        body {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            background: #f8fafc;
+        }
+        h1 {
+            font-weight: 500;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 0.9rem;
+            min-width: 900px;
+        }
+        
+        th {
+            background: #f1f5f9;
+            color: #1e293b;
+            font-weight: 600;
+            padding: 12px 16px;
+            text-align: left;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            border-bottom: 2px solid #cbd5e1;
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            transition: background 0.15s;
+        }
+        th:hover {
+            background: #e2e8f0;
+        }
+        
+        th:first-child,
+        td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            background: white;
+        }
+        th:first-child {
+            z-index: 4;
+            background: #f1f5f9;
+        }
+        
+        td:first-child,
+        th:first-child {
+            box-shadow: 2px 0 6px rgba(0, 0, 0, 0.06);
+        }
+        
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #0f172a;
+            background: white;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover td {
+            background: #f8fafc;
+        }
+        tr:hover td:first-child {
+            background: #f8fafc;
+        }
+        /* --- SORTING ARROWS --- */
+        th .arrow {
+            display: inline-block;
+            margin-left: 8px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            width: 18px;
+            text-align: center;
+        }
+        th .arrow.active {
+            color: #0f172a;
+            font-weight: 700;
+        }
+        /* --- MESSAGES --- */
+        .loading,
+        .error,
+        .info {
+            padding: 2rem;
+            text-align: center;
+        }
+        .error {
+            color: #b91c1c;
+            background: #fee2e2;
+            border-radius: 8px;
+        }
+        .info {
+            color: #0f172a;
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+        .record-count {
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+            color: #64748b;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>YÖKAtlas 2024-2015 Verileri</h1>
+    <div class="table-wrapper" id="table-wrapper">
+        <div class="loading">Yükleniyor…</div>
+    </div>
+    <div class="record-count" id="record-count"></div>
+
+    <script>
+        const wrapper = document.getElementById('table-wrapper');
+        const countEl = document.getElementById('record-count');
+
+        let csvRows = [];
+        let headers = [];
+        let sortConfig = { key: null, direction: 'asc' };
+
+        function renderTable() {
+            let sortedData = [...csvRows];
+            if (sortConfig.key) {
+                const key = sortConfig.key;
+                const dir = sortConfig.direction;
+                sortedData.sort((a, b) => {
+                    let valA = a[key] ?? '';
+                    let valB = b[key] ?? '';
+
+                    const numA = parseFloat(valA);
+                    const numB = parseFloat(valB);
+                    if (!isNaN(numA) && !isNaN(numB) && valA !== '' && valB !== '') {
+                        valA = numA;
+                        valB = numB;
+                    } else {
+                        valA = String(valA).toLowerCase();
+                        valB = String(valB).toLowerCase();
+                    }
+
+                    if (valA < valB) return dir === 'asc' ? -1 : 1;
+                    if (valA > valB) return dir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            let html = '<table>';
+
+            html += '<thead><tr>';
+            headers.forEach(col => {
+                let arrow = '';
+                let arrowClass = 'arrow';
+                if (sortConfig.key === col) {
+                    arrowClass += ' active';
+                    arrow = sortConfig.direction === 'asc' ? '▲' : '▼';
+                }
+                html += `<th data-column="${col}">${col}<span class="${arrowClass}">${arrow}</span></th>`;
+            });
+            html += '</tr></thead>';
+
+            html += '<tbody>';
+            sortedData.forEach(row => {
+                html += '<tr>';
+                headers.forEach(col => {
+                    html += `<td>${row[col] ?? ''}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+
+            wrapper.innerHTML = html;
+            countEl.textContent = `Showing ${sortedData.length} rows`;
+
+            document.querySelectorAll('th[data-column]').forEach(th => {
+                th.addEventListener('click', function() {
+                    const column = this.dataset.column;
+                    if (sortConfig.key === column) {
+                        sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        sortConfig.key = column;
+                        sortConfig.direction = 'asc';
+                    }
+                    renderTable();
+                });
+            });
+        }
+
+        function loadCSV() {
+            fetch('bolumler.csv')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status} – file not found`);
+                    return response.text();
+                })
+                .then(csvText => {
+                    //console.log('Raw CSV length:', csvText.length);
+                    //console.log('First 300 chars:', csvText.substring(0, 300));
+
+                    const result = Papa.parse(csvText, {
+                        header: true,
+                        delimiter: ",", 
+                        skipEmptyLines: true, 
+                        trimHeaders: true,
+                        dynamicTyping: false
+                    });
+
+                    //console.log('Parsed result:', result);
+
+                    headers = result.meta.fields || [];
+                    csvRows = result.data || [];
+
+                    //console.log(`Headers: ${headers.length}, Rows: ${csvRows.length}`);
+
+                    if (csvRows.length === 0) {
+                        const lines = csvText.split('\n').filter(line => line.trim() !== '');
+                        if (lines.length > 1) {
+                            //console.warn('Header mode gave 0 rows, but file has multiple lines. Trying fallback...');
+                            const fallback = Papa.parse(csvText, {
+                                skipEmptyLines: true,
+                                delimiter: ","
+                            });
+                            if (fallback.data && fallback.data.length > 1) {
+                                const rawHeaders = fallback.data[0].map(h => String(h).trim() || `Col_${headers.length}`);
+                                headers = rawHeaders;
+                                csvRows = fallback.data.slice(1).map(row => {
+                                    let obj = {};
+                                    headers.forEach((h, i) => obj[h] = row[i] || '');
+                                    return obj;
+                                });
+                                //console.log(`Fallback worked: ${csvRows.length} rows`);
+                            }
+                        }
+                    }
+
+                    renderTable();
+                })
+                .catch(err => {
+                    wrapper.innerHTML = `<div class="error">Failed to load CSV: ${err.message}<br>
+                                         <span style="font-size:0.85rem;">Make sure "bolumler.csv" is in the same folder as this HTML file.</span></div>`;
+                    console.error(err);
+                });
+        }
+
+        loadCSV();
+    </script>
+
+</body>
+</html>
